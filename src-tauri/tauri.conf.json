@@ -1,0 +1,41 @@
+{
+  "build": {
+    "beforeBuildCommand": "npm run build",
+    "beforeDevCommand": "npm run dev",
+    "devPath": "http://localhost:1420",
+    "distDir": "../dist"
+  },
+  "package": {
+    "productName": "cv-match-ai",
+    "version": "0.1.0"
+  },
+  "tauri": {
+    "allowlist": {
+      "all": false,
+      "dialog": {
+        "all": true,
+        "open": true
+      }
+    },
+    "bundle": {
+      "active": true,
+      "targets": "all",
+      "identifier": "com.cv-match-ai.app",
+      "icon": ["icons/icon.ico"]
+    },
+    "windows": [
+      {
+        "fullscreen": false,
+        "height": 900,
+        "resizable": true,
+        "title": "CV-Match AI",
+        "width": 1400,
+        "minHeight": 600,
+        "minWidth": 900
+      }
+    ],
+    "security": {
+      "csp": null
+    }
+  }
+}
