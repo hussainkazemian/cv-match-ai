@@ -1,7 +1,10 @@
 import * as pdfjsLib from 'pdfjs-dist';
 
-// Set worker source
-pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.js`;
+// Set worker source - use local file or fallback to CDN
+const isDev = !window.location.protocol.includes('tauri');
+pdfjsLib.GlobalWorkerOptions.workerSrc = isDev 
+  ? '/pdf.worker.min.mjs'
+  : `${window.location.origin}/pdf.worker.min.mjs`;
 
 function base64ToUint8Array(base64: string): Uint8Array {
   const binaryString = atob(base64);
