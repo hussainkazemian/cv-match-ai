@@ -21,7 +21,7 @@
       "active": true,
       "targets": "all",
       "identifier": "com.cv-match-ai.app",
-      "icon": ["icons/icon.ico"]
+      "icon": ["icons/favicon-512x512.ico"]
     },
     "windows": [
       {

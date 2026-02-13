@@ -7,18 +7,18 @@ const __dirname = path.dirname(__filename);
 
 const root = path.resolve(__dirname, '..');
 const iconDir = path.join(root, 'src-tauri', 'icons');
-const iconPath = path.join(iconDir, 'icon.ico');
+const iconPath = path.join(iconDir, 'favicon-512x512.ico');
 
 async function main() {
   await fs.mkdir(iconDir, { recursive: true });
 
-  // Build a minimal valid ICO containing a 1x1 32bpp BMP/DIB (no PNG).
-  // ICO file = ICONDIR (6) + ICONDIRENTRY (16) + DIB data
-  //
-  // DIB for ICO: BITMAPINFOHEADER (40) + XOR bitmap + AND mask
-  // Height in BITMAPINFOHEADER is (imageHeight * 2) to include mask.
-  const width = 1;
-  const height = 1;
+  // Create a 512x512 icon with blue background (like our favicon)
+  // ICO format: simplified version
+  
+  // Build a minimal valid ICO containing a 32x32 32bpp BMP/DIB
+  // This is a placeholder - in production you'd convert from PNG/SVG
+  const width = 32;
+  const height = 32;
 
   // BITMAPINFOHEADER (40 bytes)
   const bih = Buffer.alloc(40);
@@ -28,18 +28,24 @@ async function main() {
   bih.writeUInt16LE(1, 12); // biPlanes
   bih.writeUInt16LE(32, 14); // biBitCount
   bih.writeUInt32LE(0, 16); // biCompression = BI_RGB
-  bih.writeUInt32LE(0, 20); // biSizeImage (can be 0 for BI_RGB)
+  bih.writeUInt32LE(0, 20); // biSizeImage
   bih.writeInt32LE(0, 24); // biXPelsPerMeter
   bih.writeInt32LE(0, 28); // biYPelsPerMeter
   bih.writeUInt32LE(0, 32); // biClrUsed
   bih.writeUInt32LE(0, 36); // biClrImportant
 
-  // XOR bitmap: BGRA for 1 pixel (blue, green, red, alpha). Use transparent.
-  const xor = Buffer.from([0x00, 0x00, 0x00, 0x00]);
+  // XOR bitmap: BGRA pixels - create a simple blue background
+  // Blue color in BGRA: FF 82 3B (blue) + FF (alpha)
+  const xor = Buffer.alloc(width * height * 4);
+  for (let i = 0; i < width * height; i++) {
+    xor[i * 4 + 0] = 0xFF; // B
+    xor[i * 4 + 1] = 0x82; // G
+    xor[i * 4 + 2] = 0x3B; // R
+    xor[i * 4 + 3] = 0xFF; // A
+  }
 
-  // AND mask: 1bpp mask rows are padded to 32 bits (4 bytes).
-  // 0 bit => opaque, 1 bit => transparent. Keep opaque (all zeros).
-  const andMask = Buffer.alloc(4, 0x00);
+  // AND mask: 32x32 at 1bpp, padded to 32 bits per row
+  const andMask = Buffer.alloc(Math.ceil(width / 8) * 4 * height, 0x00);
 
   const dib = Buffer.concat([bih, xor, andMask]);
 
@@ -51,8 +57,8 @@ async function main() {
 
   // ICONDIRENTRY
   const entry = Buffer.alloc(16);
-  entry.writeUInt8(width, 0); // width (0 means 256; we use 1)
-  entry.writeUInt8(height, 1); // height
+  entry.writeUInt8(width === 256 ? 0 : width, 0); // width
+  entry.writeUInt8(height === 256 ? 0 : height, 1); // height
   entry.writeUInt8(0, 2); // color count
   entry.writeUInt8(0, 3); // reserved
   entry.writeUInt16LE(1, 4); // planes
