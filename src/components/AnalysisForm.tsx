@@ -18,7 +18,7 @@ import { open } from '@tauri-apps/api/dialog';
 import { AnalysisResult } from '../utils/textAnalyzer';
 import { pdfBase64ToText } from '../utils/pdfText';
 import { docxBase64ToText } from '../utils/docxText';
-import { translateToEnglish, detectLanguage, getLanguageName } from '../utils/languageTranslator';
+import { detectLanguage, getLanguageName } from '../utils/languageTranslator';
 import '../styles/AnalysisForm.css';
 
 interface AnalysisFormProps {
@@ -89,7 +89,7 @@ export function AnalysisForm({ onAnalyze }: AnalysisFormProps) {
     setCvFileName(null);
   };
 
-  const handleAnalyze = async () => {
+  const handleAnalyze = () => {
     if (!canAnalyze) {
       alert('Please fill in both the job posting and your CV');
       return;
@@ -100,22 +100,28 @@ export function AnalysisForm({ onAnalyze }: AnalysisFormProps) {
     setResult(null);
 
     try {
-      // Translate both texts if needed
-      setTranslationStatus('Translating job posting...');
-      const translatedJobPosting = await translateToEnglish(jobPosting);
+      // Detect languages
+      const jobLang = detectLanguage(jobPosting);
+      const cvLang = detectLanguage(cv);
+      
+      const jobLangName = getLanguageName(jobLang);
+      const cvLangName = getLanguageName(cvLang);
+      
+      setTranslationStatus(`🌐 Analyzing: Job Posting (${jobLangName}) vs CV (${cvLangName})...`);
 
-      setTranslationStatus('Translating CV...');
-      const translatedCv = await translateToEnglish(cv);
-
-      setTranslationStatus('');
-
-      // Perform analysis with translated texts
-      const analysisResult = onAnalyze(translatedJobPosting, translatedCv);
-      setResult(analysisResult);
+      setTimeout(() => {
+        try {
+          // Perform analysis with original texts
+          const analysisResult = onAnalyze(jobPosting, cv);
+          setResult(analysisResult);
+          setTranslationStatus('');
+        } finally {
+          setLoading(false);
+        }
+      }, 500);
     } catch (error) {
       console.error('Analysis error:', error);
       alert('An error occurred during analysis. Please try again.');
-    } finally {
       setLoading(false);
       setTranslationStatus('');
     }
