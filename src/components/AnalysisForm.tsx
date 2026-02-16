@@ -18,6 +18,7 @@ import { open } from '@tauri-apps/api/dialog';
 import { AnalysisResult } from '../utils/textAnalyzer';
 import { pdfBase64ToText } from '../utils/pdfText';
 import { docxBase64ToText } from '../utils/docxText';
+import { translateToEnglish, detectLanguage, getLanguageName } from '../utils/languageTranslator';
 import '../styles/AnalysisForm.css';
 
 interface AnalysisFormProps {
@@ -31,6 +32,9 @@ export function AnalysisForm({ onAnalyze }: AnalysisFormProps) {
   const [result, setResult] = useState<AnalysisResult | null>(null);
   const [loading, setLoading] = useState(false);
   const [pdfLoading, setPdfLoading] = useState(false);
+  const [translationStatus, setTranslationStatus] = useState<string>('');
+  const [jobPostingLang, setJobPostingLang] = useState<string>('');
+  const [cvLang, setCvLang] = useState<string>('');
 
   const canAnalyze = jobPosting.trim().length > 0 && cv.trim().length > 0;
 
@@ -68,6 +72,8 @@ export function AnalysisForm({ onAnalyze }: AnalysisFormProps) {
         return;
       }
 
+      // Detect language of imported document
+      setCvLang(detectLanguage(text));
       setCv(text);
       setCvFileName(fileName);
     } catch (e) {
@@ -83,23 +89,36 @@ export function AnalysisForm({ onAnalyze }: AnalysisFormProps) {
     setCvFileName(null);
   };
 
-  const handleAnalyze = () => {
+  const handleAnalyze = async () => {
     if (!canAnalyze) {
       alert('Please fill in both the job posting and your CV');
       return;
     }
 
     setLoading(true);
+    setTranslationStatus('');
     setResult(null);
 
-    setTimeout(() => {
-      try {
-        const analysisResult = onAnalyze(jobPosting, cv);
-        setResult(analysisResult);
-      } finally {
-        setLoading(false);
-      }
-    }, 100);
+    try {
+      // Translate both texts if needed
+      setTranslationStatus('Translating job posting...');
+      const translatedJobPosting = await translateToEnglish(jobPosting);
+
+      setTranslationStatus('Translating CV...');
+      const translatedCv = await translateToEnglish(cv);
+
+      setTranslationStatus('');
+
+      // Perform analysis with translated texts
+      const analysisResult = onAnalyze(translatedJobPosting, translatedCv);
+      setResult(analysisResult);
+    } catch (error) {
+      console.error('Analysis error:', error);
+      alert('An error occurred during analysis. Please try again.');
+    } finally {
+      setLoading(false);
+      setTranslationStatus('');
+    }
   };
 
   const handleClear = () => {
@@ -124,7 +143,14 @@ export function AnalysisForm({ onAnalyze }: AnalysisFormProps) {
           </p>
           <textarea
             value={jobPosting}
-            onChange={(e) => setJobPosting(e.target.value)}
+            onChange={(e) => {
+              setJobPosting(e.target.value);
+              if (e.target.value.trim().length > 20) {
+                setJobPostingLang(detectLanguage(e.target.value));
+              } else {
+                setJobPostingLang('');
+              }
+            }}
             placeholder="Paste job posting here...
 
 Example:
@@ -136,7 +162,14 @@ Example:
             className="panel-textarea"
           />
           <div className="panel-stats">
-            {jobPosting.length} characters • {jobPosting.split(/\s+/).filter(Boolean).length} words
+            <span>
+              {jobPosting.length} characters • {jobPosting.split(/\s+/).filter(Boolean).length} words
+            </span>
+            {jobPostingLang && (
+              <span className="language-badge">
+                🌐 {getLanguageName(jobPostingLang)}
+              </span>
+            )}
           </div>
         </div>
 
@@ -174,6 +207,11 @@ Example:
             onChange={(e) => {
               setCv(e.target.value);
               setCvFileName(null); // Clear filename when manually editing
+              if (e.target.value.trim().length > 20) {
+                setCvLang(detectLanguage(e.target.value));
+              } else {
+                setCvLang('');
+              }
             }}
             placeholder="Paste your CV here...
 
@@ -186,13 +224,25 @@ Example:
             className="panel-textarea"
           />
           <div className="panel-stats">
-            {cv.length} characters • {cv.split(/\s+/).filter(Boolean).length} words
+            <span>
+              {cv.length} characters • {cv.split(/\s+/).filter(Boolean).length} words
+            </span>
+            {cvLang && (
+              <span className="language-badge">
+                🌐 {getLanguageName(cvLang)}
+              </span>
+            )}
           </div>
         </div>
       </div>
 
       {/* Action Buttons */}
       <div className="actions-bar">
+        {translationStatus && (
+          <div className="translation-status">
+            ✨ {translationStatus}
+          </div>
+        )}
         <button
           onClick={handleClear}
           className="btn btn-secondary"

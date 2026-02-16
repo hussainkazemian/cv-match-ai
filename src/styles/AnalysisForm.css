@@ -72,6 +72,22 @@
   margin-top: 0.75rem;
   font-size: 0.75rem;
   color: #9ca3af;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+}
+
+.language-badge {
+  display: inline-block;
+  background: linear-gradient(135deg, #10b981, #059669);
+  color: white;
+  padding: 0.35rem 0.75rem;
+  border-radius: 12px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  white-space: nowrap;
+  box-shadow: 0 2px 4px rgba(16, 185, 129, 0.2);
 }
 
 .job-panel {
@@ -86,8 +102,30 @@
 .actions-bar {
   display: flex;
   justify-content: center;
+  align-items: center;
   gap: 1rem;
   margin-bottom: 2rem;
+  flex-wrap: wrap;
+}
+
+.translation-status {
+  font-size: 0.95rem;
+  color: #3b82f6;
+  font-weight: 600;
+  animation: pulse 1.5s ease-in-out infinite;
+  padding: 0.5rem 1rem;
+  background: #eff6ff;
+  border-radius: 6px;
+  white-space: nowrap;
+}
+
+@keyframes pulse {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.7;
+  }
 }
 
 .btn {
