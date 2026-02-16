@@ -17,6 +17,7 @@ import { invoke } from '@tauri-apps/api/tauri';
 import { open } from '@tauri-apps/api/dialog';
 import { AnalysisResult } from '../utils/textAnalyzer';
 import { pdfBase64ToText } from '../utils/pdfText';
+import { docxBase64ToText } from '../utils/docxText';
 import '../styles/AnalysisForm.css';
 
 interface AnalysisFormProps {
@@ -33,13 +34,13 @@ export function AnalysisForm({ onAnalyze }: AnalysisFormProps) {
 
   const canAnalyze = jobPosting.trim().length > 0 && cv.trim().length > 0;
 
-  const handleImportPdf = async () => {
+  const handleImportDocument = async () => {
     setPdfLoading(true);
     try {
       const selected = await open({
         multiple: false,
-        filters: [{ name: 'PDF', extensions: ['pdf'] }],
-        title: 'Select your CV (PDF)',
+        filters: [{ name: 'CV Document', extensions: ['pdf', 'docx'] }],
+        title: 'Select your CV (PDF or Word)',
       });
 
       if (!selected || Array.isArray(selected)) {
@@ -48,24 +49,30 @@ export function AnalysisForm({ onAnalyze }: AnalysisFormProps) {
       }
 
       // Get filename for display
-      const fileName = selected.split(/[/\\]/).pop() || 'CV.pdf';
+      const fileName = selected.split(/[/\\]/).pop() || 'CV';
+      const fileExtension = fileName.split('.').pop()?.toLowerCase();
 
       // Read file as base64 via Tauri backend
       const base64 = await invoke<string>('read_file_base64', { path: selected });
 
-      // Convert PDF to text
-      const text = await pdfBase64ToText(base64);
+      // Convert to text based on file type
+      let text: string;
+      if (fileExtension === 'docx') {
+        text = await docxBase64ToText(base64);
+      } else {
+        text = await pdfBase64ToText(base64);
+      }
 
       if (text.trim().length === 0) {
-        alert('Could not extract text from PDF. The PDF might be image-based or protected.');
+        alert('Could not extract text from document. The file might be protected or image-based.');
         return;
       }
 
       setCv(text);
       setCvFileName(fileName);
     } catch (e) {
-      console.error('PDF import error:', e);
-      alert('Failed to import PDF. Please try another file or paste text directly.');
+      console.error('Document import error:', e);
+      alert('Failed to import document. Please try another file or paste text directly.');
     } finally {
       setPdfLoading(false);
     }
@@ -149,15 +156,15 @@ Example:
             Paste your CV text or import from PDF
           </p>
 
-          {/* PDF Import Button */}
+          {/* Document Import Button */}
           <div className="cv-actions">
             <button
               type="button"
               className="btn btn-import"
-              onClick={handleImportPdf}
+              onClick={handleImportDocument}
               disabled={pdfLoading}
             >
-              {pdfLoading ? '⏳ Reading PDF...' : '📁 Import PDF'}
+              {pdfLoading ? '⏳ Reading Document...' : '📁 Import PDF or Word'}
             </button>
             <span className="cv-actions-divider">or paste text below</span>
           </div>
