@@ -3,44 +3,124 @@ import { TextEmbedder, FilesetResolver } from '@mediapipe/tasks-text';
 class TextEmbedderService {
   private embedder: TextEmbedder | null = null;
   private initialized = false;
-  private initializing = false;
+  private initializationPromise: Promise<void> | null = null;
+  private embeddingDebugLogged = false;
 
   async initialize(): Promise<void> {
-    if (this.initialized || this.initializing) return;
-
-    this.initializing = true;
-    try {
-      const textFiles = await FilesetResolver.forTextTasks(
-        'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-text@latest/wasm'
-      );
-
-      this.embedder = await TextEmbedder.createFromOptions(textFiles, {
-        baseOptions: {
-          // Use local model from public folder
-          modelAssetPath: '/models/universal_sentence_encoder.tflite',
-        },
-        quantize: true,
-      });
-
-      this.initialized = true;
-      console.log('✅ TextEmbedder initialized');
-    } catch (error) {
-      console.error('❌ Failed to initialize TextEmbedder:', error);
-      throw error;
-    } finally {
-      this.initializing = false;
+    // If already initialized, return immediately
+    if (this.initialized) return;
+    
+    // If currently initializing, wait for that promise to complete
+    if (this.initializationPromise) {
+      return this.initializationPromise;
     }
+
+    // Create the initialization promise and store it
+    this.initializationPromise = (async () => {
+      try {
+        const textFiles = await FilesetResolver.forTextTasks(
+          'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-text@latest/wasm'
+        );
+
+        this.embedder = await TextEmbedder.createFromOptions(textFiles, {
+          baseOptions: {
+            // Use local model from public folder
+            modelAssetPath: '/models/universal_sentence_encoder.tflite',
+          },
+          quantize: true,
+        });
+
+        this.initialized = true;
+        console.log('✅ TextEmbedder initialized');
+      } catch (error) {
+        console.error('❌ Failed to initialize TextEmbedder:', error);
+        this.initialized = false;
+        throw error;
+      }
+    })();
+    
+    return this.initializationPromise;
   }
 
   async embed(text: string): Promise<number[]> {
+    // Ensure embedder is initialized and ready
     if (!this.embedder) {
-      await this.initialize();
+      try {
+        await this.initialize();
+      } catch (error) {
+        console.error('Failed to initialize embedder in embed():', error);
+        throw error;
+      }
     }
-    const result = this.embedder!.embed(text);
-    return Array.from(result.embeddings[0].floatEmbedding ?? []);
+    
+    // Double-check embedder is ready
+    if (!this.embedder) {
+      throw new Error('TextEmbedder failed to initialize');
+    }
+    
+    try {
+      const result = this.embedder.embed(text);
+      
+      // Debug first embedding result - log the actual structure
+      if (!this.embeddingDebugLogged) {
+        console.log('[Embedding Debug] result type:', typeof result);
+        console.log('[Embedding Debug] result constructor:', result?.constructor?.name);
+        
+        // Try to get all properties including non-enumerable ones
+        if (result.embeddings && result.embeddings[0]) {
+          const firstEmb = result.embeddings[0];
+          console.log('[Embedding Debug] firstEmb type:', typeof firstEmb);
+          console.log('[Embedding Debug] firstEmb constructor:', firstEmb?.constructor?.name);
+          console.log('[Embedding Debug] firstEmb keys:', Object.keys(firstEmb));
+          
+          // Check specific property names
+          console.log('[Embedding Debug] Has floatEmbedding?', 'floatEmbedding' in firstEmb);
+          console.log('[Embedding Debug] floatEmbedding value:', (firstEmb as any).floatEmbedding);
+          console.log('[Embedding Debug] floatEmbedding type:', typeof (firstEmb as any).floatEmbedding);
+          
+          if ((firstEmb as any).floatEmbedding) {
+            const fe = (firstEmb as any).floatEmbedding;
+            console.log('[Embedding Debug] floatEmbedding length:', (fe as any).length);
+            console.log('[Embedding Debug] floatEmbedding is typed array?', fe instanceof Float32Array || fe instanceof Array);
+          }
+        }
+        this.embeddingDebugLogged = true;
+      }
+      
+      // Extract embedding
+      let embedding: number[] = [];
+      
+      // The embeddings should be in result.embeddings[0].floatEmbedding
+      if (result.embeddings && result.embeddings[0]) {
+        const firstEmb = result.embeddings[0] as any;
+        if (firstEmb.floatEmbedding) {
+          embedding = Array.from(firstEmb.floatEmbedding);
+        }
+      }
+      
+      if (embedding.length === 0) {
+        console.warn(`[Embedding] ⚠️ EMPTY EMBEDDING for text: "${text.substring(0, 30)}..."`);
+      } else {
+        console.log(`[Embedding] ✓ Got ${embedding.length}-dim embedding for: "${text.substring(0, 30)}..."`);
+      }
+      
+      return embedding;
+    } catch (error) {
+      console.error('[Embedding] Error during embed():', error);
+      throw error;
+    }
   }
 
   async calculateSimilarity(text1: string, text2: string): Promise<number> {
+    // Ensure embedder is initialized before proceeding
+    if (!this.embedder) {
+      await this.initialize();
+    }
+    
+    if (!this.embedder) {
+      throw new Error('TextEmbedder failed to initialize');
+    }
+    
     const [emb1, emb2] = await Promise.all([this.embed(text1), this.embed(text2)]);
     return this.cosineSimilarity(emb1, emb2);
   }
@@ -62,6 +142,15 @@ class TextEmbedderService {
    * No hardcoded keywords - uses embeddings to find skill-like phrases.
    */
   async extractSkillPhrases(text: string): Promise<string[]> {
+    // Ensure embedder is initialized before proceeding
+    if (!this.embedder) {
+      await this.initialize();
+    }
+    
+    if (!this.embedder) {
+      throw new Error('TextEmbedder failed to initialize');
+    }
+    
     const sentences = this.splitIntoChunks(text);
     const skills: string[] = [];
 
@@ -80,25 +169,41 @@ class TextEmbedderService {
       skillPrompts.map((p) => this.embed(p))
     );
 
+    console.log(`[TextEmbedder] Extracting skills from ${sentences.length} phrases`);
+    
+    let sampleCount = 0;
     for (const sentence of sentences) {
       if (sentence.length < 3) continue;
 
       const sentenceEmb = await this.embed(sentence);
 
       // Check similarity against each skill category
-      for (const promptEmb of promptEmbeddings) {
-        const sim = this.cosineSimilarity(sentenceEmb, promptEmb);
-        if (sim > 0.35) {
-          // Threshold for "skill-like" content
-          const cleaned = this.cleanPhrase(sentence);
-          if (cleaned && !skills.includes(cleaned)) {
-            skills.push(cleaned);
-          }
-          break;
+      let maxSim = 0;
+      
+      for (let i = 0; i < promptEmbeddings.length; i++) {
+        const sim = this.cosineSimilarity(sentenceEmb, promptEmbeddings[i]);
+        if (sim > maxSim) {
+          maxSim = sim;
+        }
+      }
+
+      // Log first 10 samples to debug
+      if (sampleCount < 10) {
+        console.log(`  [${sampleCount}] "${sentence.substring(0, 50)}..." → similarity: ${maxSim.toFixed(3)}`);
+        sampleCount++;
+      }
+
+      // Lowered threshold to 0.15 - much more lenient
+      if (maxSim > 0.15) {
+        const cleaned = this.cleanPhrase(sentence);
+        if (cleaned && !skills.includes(cleaned)) {
+          skills.push(cleaned);
+          console.log(`  ✓✓ DETECTED SKILL (sim: ${maxSim.toFixed(3)}): "${cleaned}"`);
         }
       }
     }
 
+    console.log(`[TextEmbedder] Found ${skills.length} skills total`);
     return skills;
   }
 
@@ -115,6 +220,15 @@ class TextEmbedderService {
     matches: Array<{ job: string; cv: string; similarity: number }>;
     gaps: string[];
   }> {
+    // Ensure embedder is initialized before proceeding
+    if (!this.embedder) {
+      await this.initialize();
+    }
+    
+    if (!this.embedder) {
+      throw new Error('TextEmbedder failed to initialize');
+    }
+    
     // Get overall similarity
     const overallSimilarity = await this.calculateSimilarity(jobPosting, cv);
 

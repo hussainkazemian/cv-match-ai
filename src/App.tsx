@@ -14,10 +14,10 @@ import './App.css';
 function App() {
   const [error, setError] = useState<string | null>(null);
 
-  const handleAnalyze = (jobPosting: string, cv: string): AnalysisResult | null => {
+  const handleAnalyze = async (jobPosting: string, cv: string, language: string): Promise<AnalysisResult | null> => {
     try {
       setError(null);
-      return textAnalyzer.analyze(jobPosting, cv);
+      return await textAnalyzer.analyze(jobPosting, cv, language);
     } catch (err) {
       setError('Analysis failed. Please try again.');
       console.error(err);

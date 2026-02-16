@@ -22,7 +22,7 @@ import { detectLanguage, getLanguageName } from '../utils/languageTranslator';
 import '../styles/AnalysisForm.css';
 
 interface AnalysisFormProps {
-  onAnalyze: (jobPosting: string, cv: string) => AnalysisResult | null;
+  onAnalyze: (jobPosting: string, cv: string, language: string) => Promise<AnalysisResult | null>;
 }
 
 export function AnalysisForm({ onAnalyze }: AnalysisFormProps) {
@@ -107,18 +107,22 @@ export function AnalysisForm({ onAnalyze }: AnalysisFormProps) {
       const jobLangName = getLanguageName(jobLang);
       const cvLangName = getLanguageName(cvLang);
       
+      // Use job posting language for analysis (or CV if different)
+      const analysisLanguage = jobLang;
+      
       setTranslationStatus(`🌐 Analyzing: Job Posting (${jobLangName}) vs CV (${cvLangName})...`);
 
-      setTimeout(() => {
-        try {
-          // Perform analysis with original texts
-          const analysisResult = onAnalyze(jobPosting, cv);
-          setResult(analysisResult);
-          setTranslationStatus('');
-        } finally {
-          setLoading(false);
-        }
-      }, 500);
+      // Call async analyze function with language parameter
+      onAnalyze(jobPosting, cv, analysisLanguage).then((analysisResult) => {
+        setResult(analysisResult);
+        setTranslationStatus('');
+      }).catch((error) => {
+        console.error('Analysis error:', error);
+        alert('An error occurred during analysis. Please try again.');
+        setTranslationStatus('');
+      }).finally(() => {
+        setLoading(false);
+      });
     } catch (error) {
       console.error('Analysis error:', error);
       alert('An error occurred during analysis. Please try again.');
@@ -311,27 +315,65 @@ function ResultsDisplay({ result }: { result: AnalysisResult }) {
             }}
           />
         </div>
+        <div className="score-details">
+          <small>Semantic Similarity: {result.overallSimilarity}%</small>
+        </div>
       </div>
 
       {/* Skills Comparison */}
       <div className="skills-grid">
-        {/* Job Requirements */}
+        {/* Job Requirements Structure */}
         <div className="skills-card">
-          <h3>📋 Job Requirements ({result.jobSkills.length})</h3>
-          <div className="skills-list">
-            {result.jobSkills.length > 0 ? (
-              result.jobSkills.map((skill) => (
-                <span
-                  key={skill}
-                  className={`skill-chip ${
-                    result.matchingSkills.includes(skill) ? 'matched' : 'unmatched'
-                  }`}
-                >
-                  {result.matchingSkills.includes(skill) ? '✓' : '✗'} {skill}
-                </span>
-              ))
-            ) : (
-              <span className="no-skills">No specific skills detected</span>
+          <h3>📋 Job Requirements</h3>
+          <div className="requirements-structure">
+            {result.jobRequirements.title && (
+              <div className="req-item">
+                <strong>Position:</strong> {result.jobRequirements.title}
+              </div>
+            )}
+            {result.jobRequirements.experience && (
+              <div className="req-item">
+                <strong>Experience:</strong> {result.jobRequirements.experience}
+              </div>
+            )}
+            {result.jobRequirements.education.length > 0 && (
+              <div className="req-item">
+                <strong>Education:</strong> {result.jobRequirements.education.join(', ')}
+              </div>
+            )}
+            {result.jobRequirements.requiredSkills.length > 0 && (
+              <div className="req-item">
+                <strong>Required Skills ({result.jobRequirements.requiredSkills.length}):</strong>
+                <div className="skills-list">
+                  {result.jobRequirements.requiredSkills.map((skill) => (
+                    <span
+                      key={skill}
+                      className={`skill-chip ${
+                        result.matchingSkills.includes(skill) ? 'matched' : 'unmatched'
+                      }`}
+                    >
+                      {result.matchingSkills.includes(skill) ? '✓' : '✗'} {skill}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
+            {result.jobRequirements.techStack.length > 0 && (
+              <div className="req-item">
+                <strong>Tech Stack:</strong>
+                <div className="skills-list">
+                  {result.jobRequirements.techStack.map((tech) => (
+                    <span
+                      key={tech}
+                      className={`skill-chip ${
+                        result.matchingSkills.includes(tech) ? 'matched' : 'unmatched'
+                      }`}
+                    >
+                      {result.matchingSkills.includes(tech) ? '✓' : '✗'} {tech}
+                    </span>
+                  ))}
+                </div>
+              </div>
             )}
           </div>
         </div>
