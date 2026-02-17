@@ -28,6 +28,32 @@ The application follows a three-step process:
 
 This hybrid approach of rule-based parsing and deep semantic analysis allows for robust and nuanced results that simple keyword searching cannot achieve.
 
+### Core Component Workflow
+
+Here’s a more detailed look at how the main components work together:
+
+#### 1. The Organizer: `sectionParser.ts`
+
+-   **What it does**: This is the first worker on the line. It takes the raw text from the job posting or your CV and chops it up into logical sections. It looks for common headings like "Responsibilities," "Experience," or "Skills" to sort the content into organized buckets.
+-   **Interaction with the model**: It has **no interaction** with the language model. Its job is purely structural, like sorting mail into different trays before anyone reads the letters.
+
+#### 2. The Brain: `textAnalyzer.ts`
+
+-   **What it does**: This is the project manager. It orchestrates the entire analysis.
+    1.  It first asks the `sectionParser` for the organized sections of the job post and the CV.
+    2.  It then takes the content from those sections (like a list of required skills) and decides they need to be compared for meaning.
+    3.  To do this, it sends each skill or phrase to the `textEmbedder` to be translated into a "meaning vector."
+    4.  Once it gets the vectors back, it performs the final comparison, calculating the similarity between the job skill vectors and the CV skill vectors to find matches.
+-   **Interaction with the model**: It **indirectly** interacts with the model by using the `textEmbedder` as a go-between. It tells the embedder *what* to analyze.
+
+#### 3. The Translator: `textEmbedder.ts` & the Language Model
+
+-   **What it does**: This component is the specialist that directly handles the AI. It holds the loaded language model (`universal_sentence_encoder.tflite`). When the `textAnalyzer` gives it a piece of text (e.g., the skill "Backend Development"), the `textEmbedder` feeds this text into the model.
+-   **How the model works**: The language model's sole purpose is to act as a universal translator. It translates human language into a format the computer can understand mathematically: a list of numbers called a **vector** or an **embedding**. This vector represents the text's semantic meaning.
+    -   For example, the vectors for "server-side programming" and "backend development" will be mathematically very similar.
+    -   The vectors for "Java" and "coffee" will be very different.
+-   **Interaction**: The `textEmbedder` **directly** uses the language model. It takes text, passes it to the model, and gets a meaningful numerical vector in return, which it then hands back to the `textAnalyzer`.
+
 ## 🚀 Getting Started
 
 ### Prerequisites
@@ -54,32 +80,6 @@ This hybrid approach of rule-based parsing and deep semantic analysis allows for
     ```
     This will open the application in a new window.
 
-## 📂 Project Structure
-
-```
-cv-match-ai/
-├── public/
-│   └── models/
-│       └── universal_sentence_encoder.tflite  # The local AI model
-├── src/
-│   ├── components/
-│   │   ├── AnalysisForm.tsx       # Main form UI
-│   │   └── AnalysisResult.tsx     # Results display UI
-│   ├── styles/
-│   │   ├── App.css
-│   │   └── AnalysisForm.css
-│   ├── utils/
-│   │   ├── docxText.ts            # DOCX parser
-│   │   ├── pdfText.ts             # PDF parser
-│   │   ├── sectionParser.ts       # Rule-based text section identifier
-│   │   ├── textAnalyzer.ts        # Core analysis and matching logic
-│   │   └── textEmbedder.ts        # Manages the AI model and embeddings
-│   ├── App.tsx                    # Main application component
-│   └── main.tsx                   # Entry point
-└── src-tauri/
-    ├── tauri.conf.json            # Tauri configuration
-    └── ...                        # Rust backend
-```
 
 ## 🤝 Contributing
 
