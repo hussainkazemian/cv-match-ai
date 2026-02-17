@@ -49,6 +49,7 @@ class TextEmbedderService {
           quantize: true,
         });
 
+        console.log('✅ Language model loaded and ready.');
         this.initialized = true;
         console.log('✅ TextEmbedder initialized (Hybrid Mode: Patterns + Embeddings)');
       } catch (error) {
