@@ -1,3 +1,6 @@
+// ============================================
+// File: src/utils/textEmbedder.ts
+// ============================================
 import { TextEmbedder, FilesetResolver } from '@mediapipe/tasks-text';
 
 class TextEmbedderService {
@@ -6,16 +9,33 @@ class TextEmbedderService {
   private initializationPromise: Promise<void> | null = null;
   private embeddingDebugLogged = false;
 
-  async initialize(): Promise<void> {
-    // If already initialized, return immediately
-    if (this.initialized) return;
+  // Hybrid: Pattern hints for quick pre-filtering (not strict matching)
+  private readonly patterns = {
+    // Technical skills - common across languages
+    tech: /\b(python|java|javascript|typescript|react|angular|vue|node|sql|nosql|mongodb|postgres|postgresql|mysql|docker|kubernetes|git|aws|azure|gcp|cloud|linux|windows|api|rest|graphql|html|css|sass|less|webpack|babel|ci\/cd|devops|agile|scrum|kanban|jira|jenkins|gitlab|github|bitbucket|microservices|redis|elasticsearch|kafka|spark|hadoop|tensorflow|pytorch|scikit|pandas|numpy|matplotlib|opencv|nlp|ml|ai|deep.learning|neural|cnn|rnn|lstm|bert|gpt|transformer|flutter|swift|kotlin|android|ios|mobile|unity|unreal|game|c\+\+|c#|csharp|ruby|php|go|golang|rust|scala|perl|shell|bash|powershell|matlab|r\b)\b/gi,
     
-    // If currently initializing, wait for that promise to complete
+    // Soft skills - multilingual patterns
+    soft: /\b(communication|kommunikation|viestintä|teamwork|yhteistyö|zusammenarbeit|leadership|johtajuus|führung|collaboration|problem[\s\-]?solving|analytical|creative|innovation|adaptability|flexibility|time[\s\-]?management|organization|critical[\s\-]?thinking|decision[\s\-]?making|conflict[\s\-]?resolution|negotiation|presentation|interpersonal|emotional[\s\-]?intelligence|self[\s\-]?motivated|proactive|detail[\s\-]?oriented|multitasking|strategic|planning)\b/gi,
+    
+    // Education keywords - multilingual
+    education: /\b(bachelor|master|phd|doctorate|diploma|degree|university|college|certification|certificate|certified|licensed|accredited|bsc|msc|mba|ba|ma|beng|meng|associate|undergraduate|graduate|postgraduate|tutkinto|kandidaatti|maisteri|tohtorintutkinto|tohtori|diplomi|yliopisto|korkeakoulu|ammattikorkeakoulu|sertifikaatti|hochschule|universität|abschluss|studium)\b/gi,
+    
+    // Experience indicators
+    experience: /\b(\d+[\+]?\s*(year|years|yr|yrs|vuotta|vuosi|år|jahre|ans)|senior|junior|lead|principal|staff|mid[\s\-]?level|entry[\s\-]?level|experienced|veteran|architect|expert|specialist|beginner|intermediate|advanced|professional)\b/gi,
+    
+    // Job titles/roles
+    title: /\b(developer|engineer|architect|designer|manager|analyst|consultant|administrator|specialist|coordinator|director|officer|representative|technician|scientist|researcher|intern|trainee|assistant|associate|lead|senior|junior|principal|staff|full[\s\-]?stack|front[\s\-]?end|back[\s\-]?end|devops|data|machine[\s\-]?learning|software|web|mobile|cloud|security|network|system|database|qa|quality|test|scrum[\s\-]?master|product[\s\-]?owner|kehittäjä|insinööri|arkkitehti|suunnittelija|päällikkö|johtaja|analyytikko|konsultti)\b/gi,
+    
+    // Frameworks & tools
+    frameworks: /\b(react|angular|vue|svelte|next\.js|nextjs|nuxt|gatsby|remix|express|fastapi|django|flask|spring|springboot|hibernate|laravel|symfony|rails|ruby.on.rails|asp\.net|blazor|electron|capacitor|cordova|ionic|xamarin|flutter|bootstrap|tailwind|material|antd|chakra|redux|mobx|zustand|graphql|apollo|prisma|typeorm|sequelize|mongoose|jest|mocha|cypress|playwright|selenium|webpack|vite|rollup|parcel|grunt|gulp)\b/gi,
+  };
+
+  async initialize(): Promise<void> {
+    if (this.initialized) return;
     if (this.initializationPromise) {
       return this.initializationPromise;
     }
 
-    // Create the initialization promise and store it
     this.initializationPromise = (async () => {
       try {
         const textFiles = await FilesetResolver.forTextTasks(
@@ -24,14 +44,13 @@ class TextEmbedderService {
 
         this.embedder = await TextEmbedder.createFromOptions(textFiles, {
           baseOptions: {
-            // Use local model from public folder
             modelAssetPath: '/models/universal_sentence_encoder.tflite',
           },
           quantize: true,
         });
 
         this.initialized = true;
-        console.log('✅ TextEmbedder initialized');
+        console.log('✅ TextEmbedder initialized (Hybrid Mode: Patterns + Embeddings)');
       } catch (error) {
         console.error('❌ Failed to initialize TextEmbedder:', error);
         this.initialized = false;
@@ -43,7 +62,6 @@ class TextEmbedderService {
   }
 
   async embed(text: string): Promise<number[]> {
-    // Ensure embedder is initialized and ready
     if (!this.embedder) {
       try {
         await this.initialize();
@@ -53,7 +71,6 @@ class TextEmbedderService {
       }
     }
     
-    // Double-check embedder is ready
     if (!this.embedder) {
       throw new Error('TextEmbedder failed to initialize');
     }
@@ -61,64 +78,57 @@ class TextEmbedderService {
     try {
       const result = this.embedder.embed(text);
       
-      // Debug first embedding result - log the actual structure
-    if (!this.embeddingDebugLogged) {
-      console.log('[Embedding Debug] result type:', typeof result);
-      console.log('[Embedding Debug] result constructor:', result?.constructor?.name);
-      
-      // Try to get all properties including non-enumerable ones
-      if (result.embeddings && result.embeddings[0]) {
-        const firstEmb = result.embeddings[0];
-        console.log('[Embedding Debug] firstEmb type:', typeof firstEmb);
-        console.log('[Embedding Debug] firstEmb constructor:', firstEmb?.constructor?.name);
-        console.log('[Embedding Debug] firstEmb keys:', Object.keys(firstEmb));
-        console.log('[Embedding Debug] firstEmb full object:', firstEmb);
+      if (!this.embeddingDebugLogged) {
+        console.log('[Embedding Debug] result type:', typeof result);
+        console.log('[Embedding Debug] result constructor:', result?.constructor?.name);
         
-        // Log all property names and types
-        const keys = Object.keys(firstEmb);
-        keys.forEach(key => {
-          console.log(`[Embedding Debug] Property "${key}":`, typeof (firstEmb as any)[key], (firstEmb as any)[key]);
-        });
+        if (result.embeddings && result.embeddings[0]) {
+          const firstEmb = result.embeddings[0];
+          console.log('[Embedding Debug] firstEmb type:', typeof firstEmb);
+          console.log('[Embedding Debug] firstEmb constructor:', firstEmb?.constructor?.name);
+          console.log('[Embedding Debug] firstEmb keys:', Object.keys(firstEmb));
+          console.log('[Embedding Debug] firstEmb full object:', firstEmb);
+          
+          const keys = Object.keys(firstEmb);
+          keys.forEach(key => {
+            console.log(`[Embedding Debug] Property "${key}":`, typeof (firstEmb as any)[key]);
+          });
+        }
+        this.embeddingDebugLogged = true;
       }
-      this.embeddingDebugLogged = true;
-    }
-      // Extract embedding
-      // TO THIS (try multiple property names):
-let embedding: number[] = [];
-    
-    if (result.embeddings && result.embeddings[0]) {
-      const firstEmb = result.embeddings[0] as any;
       
-      // Try different possible property names based on MediaPipe API
-      if (firstEmb.floatEmbedding) {
-        embedding = Array.from(firstEmb.floatEmbedding);
-      } else if (firstEmb.embedding) {
-        embedding = Array.from(firstEmb.embedding);
-      } else if (firstEmb.quantizedEmbedding) {
-        embedding = Array.from(firstEmb.quantizedEmbedding);
-      } else if (Array.isArray(firstEmb)) {
-        embedding = firstEmb;
-      } else if (firstEmb.value) {
-        embedding = Array.from(firstEmb.value);
-      } else {
-        // Try to find any array-like property
-        const keys = Object.keys(firstEmb);
-        for (const key of keys) {
-          const val = firstEmb[key];
-          if (val && (Array.isArray(val) || (val.length !== undefined && typeof val !== 'string'))) {
-            console.log(`[Embedding Debug] ✓ Found embedding data in property: "${key}"`);
-            embedding = Array.from(val);
-            break;
+      let embedding: number[] = [];
+      
+      if (result.embeddings && result.embeddings[0]) {
+        const firstEmb = result.embeddings[0] as any;
+        
+        if (firstEmb.floatEmbedding) {
+          embedding = Array.from(firstEmb.floatEmbedding);
+        } else if (firstEmb.embedding) {
+          embedding = Array.from(firstEmb.embedding);
+        } else if (firstEmb.quantizedEmbedding) {
+          embedding = Array.from(firstEmb.quantizedEmbedding);
+        } else if (Array.isArray(firstEmb)) {
+          embedding = firstEmb;
+        } else if (firstEmb.value) {
+          embedding = Array.from(firstEmb.value);
+        } else {
+          const keys = Object.keys(firstEmb);
+          for (const key of keys) {
+            const val = firstEmb[key];
+            if (val && (Array.isArray(val) || (val.length !== undefined && typeof val !== 'string'))) {
+              console.log(`[Embedding Debug] ✓ Found embedding data in property: "${key}"`);
+              embedding = Array.from(val);
+              break;
+            }
           }
         }
       }
-    }
-    
-    if (embedding.length === 0) {
-      console.warn(`[Embedding] ⚠️ EMPTY EMBEDDING for text: "${text.substring(0, 30)}..."`);
-    } else {
-      console.log(`[Embedding] ✓ Got ${embedding.length}-dim embedding for: "${text.substring(0, 30)}..."`);
-    }
+      
+      if (embedding.length === 0) {
+        console.warn(`[Embedding] ⚠️ EMPTY EMBEDDING for text: "${text.substring(0, 30)}..."`);
+      }
+      
       return embedding;
     } catch (error) {
       console.error('[Embedding] Error during embed():', error);
@@ -127,7 +137,6 @@ let embedding: number[] = [];
   }
 
   async calculateSimilarity(text1: string, text2: string): Promise<number> {
-    // Ensure embedder is initialized before proceeding
     if (!this.embedder) {
       await this.initialize();
     }
@@ -153,11 +162,10 @@ let embedding: number[] = [];
   }
 
   /**
-   * Extract phrases from text that are semantically similar to skill-related concepts.
-   * No hardcoded keywords - uses embeddings to find skill-like phrases.
+   * HYBRID: Extract skills using pattern hints + semantic embeddings
+   * Pattern matching provides quick boost, embeddings ensure language-agnostic coverage
    */
   async extractSkillPhrases(text: string): Promise<string[]> {
-    // Ensure embedder is initialized before proceeding
     if (!this.embedder) {
       await this.initialize();
     }
@@ -169,57 +177,133 @@ let embedding: number[] = [];
     const sentences = this.splitIntoChunks(text);
     const skills: string[] = [];
 
-    // Skill category prompts - the model finds similar phrases
-    const skillPrompts = [
-      'programming language or technology skill',
-      'software development framework or tool',
-      'professional work experience',
-      'soft skill or interpersonal ability',
-      'education or certification',
-      'technical competency',
+    // Few-shot examples instead of single prompts (better accuracy)
+    const skillExamples = [
+      // Technical skills examples
+      'Python programming language',
+      'JavaScript and TypeScript',
+      'React framework experience',
+      'SQL database management',
+      'Docker containerization',
+      // Soft skills examples
+      'strong communication skills',
+      'team leadership and collaboration',
+      'problem solving ability',
+      // Experience examples
+      '5 years of software development',
+      'senior level position',
+      'project management experience',
+      // Tools examples
+      'Git version control',
+      'AWS cloud platform',
+      'Agile methodology',
     ];
 
-    // Pre-compute prompt embeddings
-    const promptEmbeddings = await Promise.all(
-      skillPrompts.map((p) => this.embed(p))
+    // Pre-compute example embeddings
+    const exampleEmbeddings = await Promise.all(
+      skillExamples.map((ex) => this.embed(ex))
     );
 
-    console.log(`[TextEmbedder] Extracting skills from ${sentences.length} phrases`);
+    console.log(`[TextEmbedder Hybrid] Extracting skills from ${sentences.length} phrases`);
     
     let sampleCount = 0;
     for (const sentence of sentences) {
       if (sentence.length < 3) continue;
 
-      const sentenceEmb = await this.embed(sentence);
+      // HYBRID SCORING: Pattern match + Semantic similarity
+      let patternBoost = 0;
+      let semanticScore = 0;
 
-      // Check similarity against each skill category
+      // Check pattern matches for quick boost
+      if (this.patterns.tech.test(sentence)) patternBoost += 0.3;
+      if (this.patterns.soft.test(sentence)) patternBoost += 0.25;
+      if (this.patterns.frameworks.test(sentence)) patternBoost += 0.3;
+      if (this.patterns.experience.test(sentence)) patternBoost += 0.2;
+      if (this.patterns.education.test(sentence)) patternBoost += 0.15;
+
+      // Reset regex lastIndex (important for global regex)
+      Object.values(this.patterns).forEach(p => p.lastIndex = 0);
+
+      // Calculate semantic similarity against examples
+      const sentenceEmb = await this.embed(sentence);
       let maxSim = 0;
       
-      for (let i = 0; i < promptEmbeddings.length; i++) {
-        const sim = this.cosineSimilarity(sentenceEmb, promptEmbeddings[i]);
+      for (const exampleEmb of exampleEmbeddings) {
+        const sim = this.cosineSimilarity(sentenceEmb, exampleEmb);
         if (sim > maxSim) {
           maxSim = sim;
         }
       }
+      
+      semanticScore = maxSim;
 
-      // Log first 10 samples to debug
+      // Combined score: Pattern + Semantic
+      const combinedScore = Math.min(1.0, patternBoost + semanticScore);
+
+      // Log first 10 samples
       if (sampleCount < 10) {
-        console.log(`  [${sampleCount}] "${sentence.substring(0, 50)}..." → similarity: ${maxSim.toFixed(3)}`);
+        console.log(
+          `  [${sampleCount}] "${sentence.substring(0, 50)}..." → ` +
+          `pattern: ${patternBoost.toFixed(2)}, semantic: ${semanticScore.toFixed(3)}, ` +
+          `combined: ${combinedScore.toFixed(3)}`
+        );
         sampleCount++;
       }
 
-      // Lowered threshold to 0.15 - much more lenient
-      if (maxSim > 0.15) {
+      // Stricter threshold: 0.40 - filters out irrelevant phrases
+      if (combinedScore > 0.40) {
         const cleaned = this.cleanPhrase(sentence);
-        if (cleaned && !skills.includes(cleaned)) {
+        // More strict filtering: minimum 5 chars, not just numbers/dates
+        if (cleaned && cleaned.length >= 5 && !/^\d+[\s\-\/]*\d*$/.test(cleaned) && !skills.includes(cleaned)) {
           skills.push(cleaned);
-          console.log(`  ✓✓ DETECTED SKILL (sim: ${maxSim.toFixed(3)}): "${cleaned}"`);
+          console.log(
+            `  ✓✓ DETECTED SKILL (pattern: ${patternBoost.toFixed(2)}, ` +
+            `semantic: ${semanticScore.toFixed(3)}): "${cleaned}"`
+          );
         }
       }
     }
 
-    console.log(`[TextEmbedder] Found ${skills.length} skills total`);
+    console.log(`[TextEmbedder Hybrid] Found ${skills.length} skills total`);
     return skills;
+  }
+
+  /**
+   * HYBRID: Check if phrase matches a category using patterns + embeddings
+   */
+  async matchesCategory(
+    phrase: string, 
+    categoryExamples: string[], 
+    patternRegex?: RegExp,
+    threshold: number = 0.5
+  ): Promise<{ matches: boolean; score: number }> {
+    if (!this.embedder) {
+      await this.initialize();
+    }
+
+    let patternBoost = 0;
+    if (patternRegex && patternRegex.test(phrase)) {
+      patternBoost = 0.35;
+      patternRegex.lastIndex = 0; // Reset
+    }
+
+    // Semantic similarity against examples
+    const phraseEmb = await this.embed(phrase);
+    const exampleEmbeddings = await Promise.all(
+      categoryExamples.map(ex => this.embed(ex))
+    );
+
+    let maxSim = 0;
+    for (const exampleEmb of exampleEmbeddings) {
+      const sim = this.cosineSimilarity(phraseEmb, exampleEmb);
+      if (sim > maxSim) maxSim = sim;
+    }
+
+    const combinedScore = Math.min(1.0, patternBoost + maxSim);
+    return {
+      matches: combinedScore > threshold,
+      score: combinedScore
+    };
   }
 
   /**
@@ -235,7 +319,6 @@ let embedding: number[] = [];
     matches: Array<{ job: string; cv: string; similarity: number }>;
     gaps: string[];
   }> {
-    // Ensure embedder is initialized before proceeding
     if (!this.embedder) {
       await this.initialize();
     }
@@ -244,14 +327,11 @@ let embedding: number[] = [];
       throw new Error('TextEmbedder failed to initialize');
     }
     
-    // Get overall similarity
     const overallSimilarity = await this.calculateSimilarity(jobPosting, cv);
 
-    // Extract skill phrases from both
     const jobPhrases = await this.extractSkillPhrases(jobPosting);
     const cvPhrases = await this.extractSkillPhrases(cv);
 
-    // Find matches - job phrases that have similar CV phrases
     const matches: Array<{ job: string; cv: string; similarity: number }> = [];
     const matchedJobPhrases = new Set<string>();
 
@@ -273,7 +353,6 @@ let embedding: number[] = [];
       }
     }
 
-    // Gaps are job phrases without good CV matches
     const gaps = jobPhrases.filter((jp) => !matchedJobPhrases.has(jp));
 
     return {
@@ -286,11 +365,11 @@ let embedding: number[] = [];
   }
 
   private splitIntoChunks(text: string): string[] {
-    // Split by common delimiters
+    // Split by sentence-ending punctuation and line breaks, but NOT hyphens (preserve "full-stack", "problem-solving")
     return text
-      .split(/[.•\-\n,;:]/)
+      .split(/[.•\n;:]/)
       .map((s) => s.trim())
-      .filter((s) => s.length > 2 && s.length < 100);
+      .filter((s) => s.length >= 5 && s.length < 150); // Minimum 5 chars to avoid single words
   }
 
   private cleanPhrase(phrase: string): string {

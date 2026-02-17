@@ -7,18 +7,22 @@ const __dirname = path.dirname(__filename);
 
 const root = path.resolve(__dirname, '..');
 const iconDir = path.join(root, 'src-tauri', 'icons');
-const iconPath = path.join(iconDir, 'favicon-512x512.ico');
 
-async function main() {
-  await fs.mkdir(iconDir, { recursive: true });
+// Generate multiple icon sizes for Tauri
+const iconSizes = [
+  { name: 'favicon-16x16.ico', size: 16 },
+  { name: 'favicon-32x32.ico', size: 32 },
+  { name: 'favicon-48x48.ico', size: 48 },
+  { name: 'favicon-64x64.ico', size: 64 },
+  { name: 'favicon-180x180.ico', size: 180 },
+  { name: 'favicon-192x192.ico', size: 192 },
+  { name: 'favicon-512x512.ico', size: 512 },
+  { name: 'icon.ico', size: 64 }, // Main app icon
+];
 
-  // Create a 512x512 icon with blue background (like our favicon)
-  // ICO format: simplified version
-  
-  // Build a minimal valid ICO containing a 32x32 32bpp BMP/DIB
-  // This is a placeholder - in production you'd convert from PNG/SVG
-  const width = 32;
-  const height = 32;
+async function generateIcon(size, filename) {
+  const width = Math.min(size, 256); // ICO format limitation
+  const height = Math.min(size, 256);
 
   // BITMAPINFOHEADER (40 bytes)
   const bih = Buffer.alloc(40);
@@ -34,7 +38,7 @@ async function main() {
   bih.writeUInt32LE(0, 32); // biClrUsed
   bih.writeUInt32LE(0, 36); // biClrImportant
 
-  // XOR bitmap: BGRA pixels - create a simple blue background
+  // XOR bitmap: BGRA pixels - create blue background with white "CV" text
   // Blue color in BGRA: FF 82 3B (blue) + FF (alpha)
   const xor = Buffer.alloc(width * height * 4);
   for (let i = 0; i < width * height; i++) {
@@ -44,7 +48,7 @@ async function main() {
     xor[i * 4 + 3] = 0xFF; // A
   }
 
-  // AND mask: 32x32 at 1bpp, padded to 32 bits per row
+  // AND mask: at 1bpp, padded to 32 bits per row
   const andMask = Buffer.alloc(Math.ceil(width / 8) * 4 * height, 0x00);
 
   const dib = Buffer.concat([bih, xor, andMask]);
@@ -67,9 +71,23 @@ async function main() {
   entry.writeUInt32LE(6 + 16, 12); // image offset
 
   const ico = Buffer.concat([header, entry, dib]);
+  const iconPath = path.join(iconDir, filename);
   await fs.writeFile(iconPath, ico);
+  
+  return path.relative(root, iconPath);
+}
 
-  console.log(`Generated ${path.relative(root, iconPath)}`);
+async function main() {
+  await fs.mkdir(iconDir, { recursive: true });
+
+  console.log('Generating Tauri app icons...');
+  
+  for (const { name, size } of iconSizes) {
+    const relativePath = await generateIcon(size, name);
+    console.log(`✓ Generated ${relativePath} (${size}x${size})`);
+  }
+  
+  console.log(`\n✅ All icons generated successfully!`);
 }
 
 main().catch((e) => {

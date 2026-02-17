@@ -1,8 +1,5 @@
-/*
- * Licensed under the Apache License, Version 2.0
- */
-
 import { textEmbedder } from './textEmbedder';
+import { sectionParser } from './sectionParser';
 
 export interface JobRequirements {
   title: string;
@@ -27,187 +24,206 @@ export interface AnalysisResult {
 
 class TextAnalyzer {
   /**
-   * Extract skills using semantic embeddings (language-agnostic)
-   * No hardcoded keywords - pure semantic extraction using MediaPipe embeddings
-   * Works for all languages: Finnish, English, Swedish, German, French, Spanish, Italian, Norwegian, Danish, etc.
+   * Extract skills from text using section-based parsing
+   * Much cleaner than pure semantic extraction
    */
   async extractSkills(text: string): Promise<string[]> {
     try {
-      // Use embeddings for semantic extraction
-      const semanticSkills = await textEmbedder.extractSkillPhrases(text);
+      console.log('[TextAnalyzer] Extracting skills from CV...');
       
-      // Remove duplicates and sort
-      return [...new Set(semanticSkills)].sort();
+      // Use section parser to extract skills
+      const sections = sectionParser.parseSections(text);
+      const allSkills = sectionParser.getAllSkills(sections);
+      
+      const skillMap = new Map<string, string>();
+      for (const skill of allSkills) {
+        const normalized = this.normalizeSkill(skill);
+        if (!normalized) continue;
+        const key = normalized.toLowerCase();
+        if (!skillMap.has(key)) {
+          skillMap.set(key, normalized);
+        }
+      }
+
+      const sectionSkillCount = skillMap.size;
+      console.log(`[TextAnalyzer] Section-based skills detected: ${sectionSkillCount}`);
+
+      // Hybrid fallback: if CV lacks explicit skill sections, use semantic extractor
+      if (sectionSkillCount < 5) {
+        console.log('[TextAnalyzer] Limited section-based skills found, running hybrid fallback...');
+        const fallbackSkills = await textEmbedder.extractSkillPhrases(text);
+        for (const skill of fallbackSkills) {
+          const normalized = this.normalizeSkill(skill);
+          if (!normalized) continue;
+          const key = normalized.toLowerCase();
+          if (!skillMap.has(key)) {
+            skillMap.set(key, normalized);
+          }
+        }
+        console.log(
+          `[TextAnalyzer] Hybrid fallback added ${skillMap.size - sectionSkillCount} additional skills`
+        );
+      }
+      
+      return Array.from(skillMap.values()).sort((a, b) => a.localeCompare(b));
     } catch (error) {
       console.error('Skill extraction failed:', error);
-      // If extraction fails completely, return empty array
-      // No fallback to hardcoded keywords - let embeddings handle all languages
       return [];
     }
   }
 
   /**
-   * Parse job posting into structured requirements
-   * Categorizes extracted phrases using ONLY semantic embeddings - no hardcoded patterns
-   * Language-agnostic: Works for Finnish, English, Swedish, and any language MediaPipe supports
+   * CLEAN APPROACH: Parse job posting using section detection
+   * Looks for explicit section headers, then extracts content
+   * Much more reliable than pure semantic guessing
    */
   async parseJobPosting(jobPosting: string): Promise<JobRequirements> {
-    const allSkills = await this.extractSkills(jobPosting);
+    console.log('[TextAnalyzer] Parsing job posting with section-based approach...');
     
-    // Categorize skills using semantic similarity
-    const requiredSkills: string[] = [];
-    const niceToHaveSkills: string[] = [];
-    const techStack: string[] = [];
-    const softSkills: string[] = [];
-    const responsibilities: string[] = [];
-    const education: string[] = [];
-    let experience = '';
-    let title = '';
-
-    // Split job posting into sentences/phrases for analysis
-    const phrases = jobPosting
-      .split(/[.\n;:,]/)
-      .map(p => p.trim())
-      .filter(p => p.length > 5 && p.length < 150);
-
-    // Use embeddings to detect: experience level, education, title, context
-    for (const phrase of phrases) {
-      try {
-        // Detect experience level using semantic similarity
-        // Works for: "5+ years", "senior", "veteran", "experienced", "junior", etc. in ANY language
-        const experienceSim = await textEmbedder.calculateSimilarity(
-          phrase,
-          'years of experience senior level junior mid-level lead'
-        );
-        if (experienceSim > 0.65 && !experience) {
-          experience = phrase;
-          continue;
-        }
-
-        // Detect education using semantic similarity
-        // Works for: "degree", "bachelor", "master", "phd", "certification", etc. in ANY language
-        const educationSim = await textEmbedder.calculateSimilarity(
-          phrase,
-          'education degree bachelor master phd certification diploma university'
-        );
-        if (educationSim > 0.70) {
-          if (!education.includes(phrase)) {
-            education.push(phrase);
-          }
-          continue;
-        }
-
-        // Detect job title using semantic similarity
-        // Works for: phrases that describe a job role/title in ANY language
-        const titleSim = await textEmbedder.calculateSimilarity(
-          phrase,
-          'position role title job seeking looking for hiring'
-        );
-        if (titleSim > 0.75 && !title && phrase.length < 100) {
-          title = phrase;
-          continue;
-        }
-
-        // Detect nice-to-have vs required
-        // No lookups previous position - use embeddings instead
-        const niceToHaveSim = await textEmbedder.calculateSimilarity(
-          phrase,
-          'nice to have optional bonus preferred'
-        );
-        const requiredSim = await textEmbedder.calculateSimilarity(
-          phrase,
-          'required must have essential mandatory'
-        );
-
-        if (niceToHaveSim > 0.75) {
-          // This phrase is in nice-to-have context
-          for (const skill of allSkills) {
-            if (phrase.includes(skill) && !niceToHaveSkills.includes(skill)) {
-              niceToHaveSkills.push(skill);
-            }
-          }
-        } else if (requiredSim > 0.75 || requiredSim > niceToHaveSim) {
-          // This phrase is in required context
-          for (const skill of allSkills) {
-            if (phrase.includes(skill) && !requiredSkills.includes(skill)) {
-              requiredSkills.push(skill);
-            }
-          }
-        }
-      } catch (error) {
-        console.warn('Error processing phrase:', error);
+    // Step 1: Parse sections from job posting
+    const sections = sectionParser.parseSections(jobPosting);
+    
+    console.log('[TextAnalyzer] Extracted sections:', {
+      title: sections.title.length,
+      experience: sections.experience.length,
+      education: sections.education.length,
+      skills: sections.skills.length,
+      requirements: sections.requirements.length,
+      niceToHave: sections.niceToHave.length,
+      responsibilities: sections.responsibilities.length,
+    });
+    
+    // Step 2: Extract and organize data
+    const title = sections.title.length > 0 ? sections.title[0] : 'Position';
+    
+    // Experience: look for years, seniority level
+    let experience = 'Not specified';
+    if (sections.experience.length > 0) {
+      // Find the most descriptive experience requirement
+      const expWithYears = sections.experience.find(exp => /\d+/.test(exp));
+      experience = expWithYears || sections.experience[0];
+      console.log(`[TextAnalyzer] Experience: "${experience}"`);
+    } else {
+      // Fallback: check all text for experience mentions
+      const expMatch = jobPosting.match(/\b(\d+[\+]?\s*(years?|yrs?|vuotta|vuosi)|senior|junior|mid[\s\-]?level|experienced)\b/i);
+      if (expMatch) {
+        experience = expMatch[0];
+        console.log(`[TextAnalyzer] Experience (fallback): "${experience}"`);
       }
     }
-
-    // Categorize each skill using embeddings
-    for (const skill of allSkills) {
-      // Skip if already categorized
-      if (
-        requiredSkills.includes(skill) ||
-        niceToHaveSkills.includes(skill) ||
-        education.includes(skill)
-      ) {
-        continue;
+    
+    // Education: directly from sections  
+    const education = [...new Set(sections.education)];
+    if (education.length > 0) {
+      console.log(`[TextAnalyzer] Education (${education.length}):`, education);
+    }
+    
+    // Skills: from requirements, nice-to-have, and skills sections
+    let requiredSkills = [...new Set([...sections.requirements, ...sections.skills])];
+    let niceToHaveSkills = [...new Set(sections.niceToHave)];
+    
+    const sectionSkillCount = requiredSkills.length + niceToHaveSkills.length;
+    console.log(`[TextAnalyzer] Section-based skills extracted:`, {
+      required: requiredSkills.length,
+      niceToHave: niceToHaveSkills.length,
+      total: sectionSkillCount
+    });
+    
+    // HYBRID FALLBACK: If section parsing yields too few skills, use semantic extraction
+    if (sectionSkillCount < 5) {
+      console.log('[TextAnalyzer] Limited skills from sections, running hybrid semantic fallback...');
+      const fallbackSkills = await textEmbedder.extractSkillPhrases(jobPosting);
+      
+      // Deduplicate and merge
+      const skillMap = new Map<string, string>();
+      
+      // Add existing section-based skills
+      for (const skill of [...requiredSkills, ...niceToHaveSkills]) {
+        const normalized = this.normalizeSkill(skill);
+        if (normalized) {
+          skillMap.set(normalized.toLowerCase(), normalized);
+        }
       }
       
-      // Use semantic similarity to categorize
-      try {
-        // Check if it's a soft skill
-        const softSkillSim = await textEmbedder.calculateSimilarity(skill, 'communication teamwork leadership problem solving analytical');
-        if (softSkillSim > 0.65) {
-          softSkills.push(skill);
-          continue;
-        }
-
-        // Check if it's a responsibility/role
-        const responsibilitySim = await textEmbedder.calculateSimilarity(skill, 'design develop build create manage maintain support implement');
-        if (responsibilitySim > 0.70 && skill.length > 15) {
-          responsibilities.push(skill);
-          continue;
-        }
-
-        // Check if it's a tech framework/library
-        const techSim = await textEmbedder.calculateSimilarity(skill, 'framework library platform technology tool');
-        if (techSim > 0.60) {
-          techStack.push(skill);
-          continue;
-        }
-
-        // Default to required (most skills are required)
-        if (!requiredSkills.includes(skill)) {
-          requiredSkills.push(skill);
-        }
-      } catch (error) {
-        console.warn('Error categorizing skill:', error);
-        // Default to required
-        if (!requiredSkills.includes(skill)) {
-          requiredSkills.push(skill);
+      // Add fallback semantic skills
+      for (const skill of fallbackSkills) {
+        const normalized = this.normalizeSkill(skill);
+        if (normalized) {
+          const key = normalized.toLowerCase();
+          if (!skillMap.has(key)) {
+            skillMap.set(key, normalized);
+          }
         }
       }
+      
+      const mergedSkills = Array.from(skillMap.values());
+      requiredSkills = mergedSkills; // Treat all as required if sections were unclear
+      niceToHaveSkills = [];
+      
+      console.log(
+        `[TextAnalyzer] Hybrid fallback added ${mergedSkills.length - sectionSkillCount} skills ` +
+        `(total now: ${mergedSkills.length})`
+      );
     }
+    
+    if (requiredSkills.length > 0) {
+      console.log(`[TextAnalyzer] Required skills sample:`, requiredSkills.slice(0, 5));
+    }
+    
+    // Responsibilities
+    const responsibilities = [...new Set(sections.responsibilities)].slice(0, 5);
+    
+    // Validate and categorize skills using hybrid approach (optional quality check)
+    const techStack: string[] = [];
+    const softSkills: string[] = [];
+    
+    // Quick categorization based on patterns
+    const allSkillItems = [...requiredSkills, ...niceToHaveSkills];
+    for (const item of allSkillItems) {
+      // Check if it's a tech skill (pattern matching)
+      if (/\b(python|java|javascript|typescript|react|angular|vue|node|sql|mongodb|docker|kubernetes|aws|azure|git|api|html|css|framework|library|database)\b/i.test(item) && !techStack.includes(item)) {
+        techStack.push(item);
+      }
+      // Check if it's a soft skill
+      else if (/\b(communication|teamwork|leadership|collaboration|problem[\s\-]?solving|analytical|creative|flexible|organized)\b/i.test(item) && !softSkills.includes(item)) {
+        softSkills.push(item);
+      }
+    }
+    
+    console.log('[TextAnalyzer] Parsing complete:', {
+      title,
+      experience,
+      educationCount: education.length,
+      requiredSkillsCount: requiredSkills.length,
+      niceToHaveCount: niceToHaveSkills.length,
+      techStackCount: techStack.length,
+      softSkillsCount: softSkills.length,
+      responsibilitiesCount: responsibilities.length,
+    });
 
     return {
-      title: title || 'Position',
-      experience: experience || 'Not specified',
-      education: [...new Set(education)],
-      requiredSkills: [...new Set(requiredSkills)],
-      niceToHaveSkills: [...new Set(niceToHaveSkills)],
-      techStack: [...new Set(techStack)],
-      responsibilities: [...new Set(responsibilities)].slice(0, 5),
-      softSkills: [...new Set(softSkills)],
+      title,
+      experience,
+      education,
+      requiredSkills,
+      niceToHaveSkills,
+      techStack,
+      responsibilities,
+      softSkills,
     };
   }
 
   /**
-   * Analyze job posting vs CV with language support
-   * Uses semantic embeddings for comparison
-   * Language parameter reserved for future MediaPipe translation implementation
+   * Analyze job posting vs CV with section-based parsing + semantic matching
    */
   async analyze(jobPosting: string, cv: string, _language: string = 'eng_Latn'): Promise<AnalysisResult> {
-    // Parse job posting into structured requirements
-    const jobRequirements = await this.parseJobPosting(jobPosting);
+    console.log('[TextAnalyzer] Starting analysis...');
     
-    // Extract all required skills from job requirements
+    // Parse both job posting and CV using section-based approach
+    const jobRequirements = await this.parseJobPosting(jobPosting);
+    const cvSkills = await this.extractSkills(cv);
+    
+    // All job skills to check
     const allJobSkills = [
       ...jobRequirements.requiredSkills,
       ...jobRequirements.niceToHaveSkills,
@@ -215,33 +231,42 @@ class TextAnalyzer {
       ...jobRequirements.softSkills,
     ];
 
-    // Extract skills from CV
-    const cvSkills = await this.extractSkills(cv);
+    console.log(`[TextAnalyzer] Comparing ${allJobSkills.length} job skills with ${cvSkills.length} CV skills`);
 
-    // Calculate semantic similarity between each job skill and CV
+    // Match skills using semantic similarity
     const matchingSkills: string[] = [];
     const matchedJobSkills = new Set<string>();
 
     for (const jobSkill of allJobSkills) {
+      // First try exact/fuzzy string matching (faster)
+      const exactMatch = cvSkills.find(cvSkill => 
+        cvSkill.toLowerCase().includes(jobSkill.toLowerCase()) ||
+        jobSkill.toLowerCase().includes(cvSkill.toLowerCase())
+      );
+      
+      if (exactMatch) {
+        matchingSkills.push(jobSkill);
+        matchedJobSkills.add(jobSkill);
+        console.log(`  ✓ Exact match: "${jobSkill}" ↔ "${exactMatch}"`);
+        continue;
+      }
+      
+      // Fallback to semantic similarity for related terms
       for (const cvSkill of cvSkills) {
-        // Use semantic similarity (not just string matching)
         const similarity = await textEmbedder.calculateSimilarity(jobSkill, cvSkill);
-        if (similarity > 0.6) {
-          // 0.6 threshold for semantic match
+        if (similarity > 0.65) { // Slightly higher threshold for semantic
           matchingSkills.push(jobSkill);
           matchedJobSkills.add(jobSkill);
-          break; // Found a match, move to next job skill
+          console.log(`  ✓ Semantic match (${(similarity * 100).toFixed(0)}%): "${jobSkill}" ↔ "${cvSkill}"`);
+          break;
         }
       }
     }
 
-    // Remove duplicates from matching skills
     const uniqueMatchingSkills = [...new Set(matchingSkills)];
-
-    // Missing skills (in job but not matched to CV)
     const missingSkills = allJobSkills.filter(skill => !matchedJobSkills.has(skill));
 
-    // Calculate match score based on required skills only (stricter)
+    // Calculate match score based on required skills only
     const requiredMatchingSkills = jobRequirements.requiredSkills.filter(skill => 
       uniqueMatchingSkills.includes(skill)
     );
@@ -250,7 +275,7 @@ class TextAnalyzer {
       ? Math.round((requiredMatchingSkills.length / jobRequirements.requiredSkills.length) * 100)
       : 0;
 
-    // Calculate overall semantic similarity
+    // Overall document similarity
     let overallSimilarity = 0;
     try {
       overallSimilarity = await textEmbedder.calculateSimilarity(jobPosting, cv);
@@ -258,7 +283,6 @@ class TextAnalyzer {
       console.warn('Overall similarity calculation failed:', error);
     }
 
-    // Generate recommendations in the detected language
     const recommendations = this.generateRecommendations(
       matchScore,
       uniqueMatchingSkills,
@@ -266,6 +290,8 @@ class TextAnalyzer {
       cv,
       jobRequirements
     );
+
+    console.log(`[TextAnalyzer] Analysis complete: ${matchScore}% match, ${uniqueMatchingSkills.length} matching skills, ${missingSkills.length} missing`);
 
     return {
       jobRequirements,
@@ -291,7 +317,6 @@ class TextAnalyzer {
     const recommendations: string[] = [];
     const translations = this.getRecommendationTranslations();
 
-    // Score-based recommendations
     if (matchScore >= 80) {
       recommendations.push(translations.excellent);
       recommendations.push(translations.coverLetter);
@@ -306,7 +331,6 @@ class TextAnalyzer {
       recommendations.push(translations.considerOtherRoles);
     }
 
-    // Missing required skills recommendation
     const missingRequired = jobRequirements.requiredSkills.filter(skill => 
       missingSkills.includes(skill)
     );
@@ -321,7 +345,6 @@ class TextAnalyzer {
       );
     }
 
-    // CV length recommendation
     const wordCount = cv.split(/\s+/).filter(Boolean).length;
     if (wordCount < 100) {
       recommendations.push(translations.cvTooShort);
@@ -329,21 +352,12 @@ class TextAnalyzer {
       recommendations.push(translations.cvTooLong);
     }
 
-    // Matching skills encouragement
     if (matchingSkills.length > 0) {
       recommendations.push(
         `✅ ${translations.highlightSkills}: ${matchingSkills.slice(0, 5).join(', ')}`
       );
     }
 
-    // Education recommendation
-    if (jobRequirements.education.length > 0) {
-      recommendations.push(
-        `🎓 ${translations.educationRequired}: ${jobRequirements.education[0]}`
-      );
-    }
-
-    // Education recommendation
     if (jobRequirements.education.length > 0) {
       recommendations.push(
         `🎓 ${translations.educationRequired}: ${jobRequirements.education[0]}`
@@ -355,7 +369,6 @@ class TextAnalyzer {
 
   /**
    * Get recommendation text in English
-   * Language detection is preserved for future MediaPipe translation
    */
   private getRecommendationTranslations(): Record<string, string> {
     return {
@@ -374,6 +387,15 @@ class TextAnalyzer {
       highlightSkills: 'Highlight these matching skills prominently',
       educationRequired: 'Education required',
     };
+  }
+
+  private normalizeSkill(skill: string): string {
+    return skill
+      .replace(/^[\s\-•*]+/, '')
+      .replace(/[\s\-•*]+$/, '')
+      .replace(/[.,;:]+$/, '')
+      .replace(/\s+/g, ' ')
+      .trim();
   }
 }
 

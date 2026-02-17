@@ -362,9 +362,9 @@ function ResultsDisplay({ result }: { result: AnalysisResult }) {
               <div className="req-item">
                 <strong>Tech Stack:</strong>
                 <div className="skills-list">
-                  {result.jobRequirements.techStack.map((tech) => (
+                  {result.jobRequirements.techStack.map((tech, index) => (
                     <span
-                      key={tech}
+                      key={`tech-${index}-${tech}`}
                       className={`skill-chip ${
                         result.matchingSkills.includes(tech) ? 'matched' : 'unmatched'
                       }`}
@@ -383,8 +383,8 @@ function ResultsDisplay({ result }: { result: AnalysisResult }) {
           <h3>📄 Your Skills ({result.cvSkills.length})</h3>
           <div className="skills-list">
             {result.cvSkills.length > 0 ? (
-              result.cvSkills.map((skill) => (
-                <span key={skill} className="skill-chip cv-skill">
+              result.cvSkills.map((skill, index) => (
+                <span key={`cv-${index}-${skill}`} className="skill-chip cv-skill">
                   {skill}
                 </span>
               ))
@@ -399,8 +399,8 @@ function ResultsDisplay({ result }: { result: AnalysisResult }) {
           <h3>✅ Matching Skills ({result.matchingSkills.length})</h3>
           <div className="skills-list">
             {result.matchingSkills.length > 0 ? (
-              result.matchingSkills.map((skill) => (
-                <span key={skill} className="skill-chip matched">
+              result.matchingSkills.map((skill, index) => (
+                <span key={`match-${index}-${skill}`} className="skill-chip matched">
                   {skill}
                 </span>
               ))
@@ -415,8 +415,8 @@ function ResultsDisplay({ result }: { result: AnalysisResult }) {
           <h3>❌ Missing Skills ({result.missingSkills.length})</h3>
           <div className="skills-list">
             {result.missingSkills.length > 0 ? (
-              result.missingSkills.map((skill) => (
-                <span key={skill} className="skill-chip missing">
+              result.missingSkills.map((skill, index) => (
+                <span key={`missing-${index}-${skill}`} className="skill-chip missing">
                   {skill}
                 </span>
               ))
