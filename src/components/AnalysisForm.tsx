@@ -421,7 +421,7 @@ function ResultsDisplay({ result }: { result: AnalysisResult }) {
                 </span>
               ))
             ) : (
-              <span className="no-skills">Great! No missing skills</span>
+              <span className="no-skills">Develop more skills to improve your match</span>
             )}
           </div>
         </div>

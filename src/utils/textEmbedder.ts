@@ -62,48 +62,63 @@ class TextEmbedderService {
       const result = this.embedder.embed(text);
       
       // Debug first embedding result - log the actual structure
-      if (!this.embeddingDebugLogged) {
-        console.log('[Embedding Debug] result type:', typeof result);
-        console.log('[Embedding Debug] result constructor:', result?.constructor?.name);
+    if (!this.embeddingDebugLogged) {
+      console.log('[Embedding Debug] result type:', typeof result);
+      console.log('[Embedding Debug] result constructor:', result?.constructor?.name);
+      
+      // Try to get all properties including non-enumerable ones
+      if (result.embeddings && result.embeddings[0]) {
+        const firstEmb = result.embeddings[0];
+        console.log('[Embedding Debug] firstEmb type:', typeof firstEmb);
+        console.log('[Embedding Debug] firstEmb constructor:', firstEmb?.constructor?.name);
+        console.log('[Embedding Debug] firstEmb keys:', Object.keys(firstEmb));
+        console.log('[Embedding Debug] firstEmb full object:', firstEmb);
         
-        // Try to get all properties including non-enumerable ones
-        if (result.embeddings && result.embeddings[0]) {
-          const firstEmb = result.embeddings[0];
-          console.log('[Embedding Debug] firstEmb type:', typeof firstEmb);
-          console.log('[Embedding Debug] firstEmb constructor:', firstEmb?.constructor?.name);
-          console.log('[Embedding Debug] firstEmb keys:', Object.keys(firstEmb));
-          
-          // Check specific property names
-          console.log('[Embedding Debug] Has floatEmbedding?', 'floatEmbedding' in firstEmb);
-          console.log('[Embedding Debug] floatEmbedding value:', (firstEmb as any).floatEmbedding);
-          console.log('[Embedding Debug] floatEmbedding type:', typeof (firstEmb as any).floatEmbedding);
-          
-          if ((firstEmb as any).floatEmbedding) {
-            const fe = (firstEmb as any).floatEmbedding;
-            console.log('[Embedding Debug] floatEmbedding length:', (fe as any).length);
-            console.log('[Embedding Debug] floatEmbedding is typed array?', fe instanceof Float32Array || fe instanceof Array);
+        // Log all property names and types
+        const keys = Object.keys(firstEmb);
+        keys.forEach(key => {
+          console.log(`[Embedding Debug] Property "${key}":`, typeof (firstEmb as any)[key], (firstEmb as any)[key]);
+        });
+      }
+      this.embeddingDebugLogged = true;
+    }
+      // Extract embedding
+      // TO THIS (try multiple property names):
+let embedding: number[] = [];
+    
+    if (result.embeddings && result.embeddings[0]) {
+      const firstEmb = result.embeddings[0] as any;
+      
+      // Try different possible property names based on MediaPipe API
+      if (firstEmb.floatEmbedding) {
+        embedding = Array.from(firstEmb.floatEmbedding);
+      } else if (firstEmb.embedding) {
+        embedding = Array.from(firstEmb.embedding);
+      } else if (firstEmb.quantizedEmbedding) {
+        embedding = Array.from(firstEmb.quantizedEmbedding);
+      } else if (Array.isArray(firstEmb)) {
+        embedding = firstEmb;
+      } else if (firstEmb.value) {
+        embedding = Array.from(firstEmb.value);
+      } else {
+        // Try to find any array-like property
+        const keys = Object.keys(firstEmb);
+        for (const key of keys) {
+          const val = firstEmb[key];
+          if (val && (Array.isArray(val) || (val.length !== undefined && typeof val !== 'string'))) {
+            console.log(`[Embedding Debug] ✓ Found embedding data in property: "${key}"`);
+            embedding = Array.from(val);
+            break;
           }
         }
-        this.embeddingDebugLogged = true;
       }
-      
-      // Extract embedding
-      let embedding: number[] = [];
-      
-      // The embeddings should be in result.embeddings[0].floatEmbedding
-      if (result.embeddings && result.embeddings[0]) {
-        const firstEmb = result.embeddings[0] as any;
-        if (firstEmb.floatEmbedding) {
-          embedding = Array.from(firstEmb.floatEmbedding);
-        }
-      }
-      
-      if (embedding.length === 0) {
-        console.warn(`[Embedding] ⚠️ EMPTY EMBEDDING for text: "${text.substring(0, 30)}..."`);
-      } else {
-        console.log(`[Embedding] ✓ Got ${embedding.length}-dim embedding for: "${text.substring(0, 30)}..."`);
-      }
-      
+    }
+    
+    if (embedding.length === 0) {
+      console.warn(`[Embedding] ⚠️ EMPTY EMBEDDING for text: "${text.substring(0, 30)}..."`);
+    } else {
+      console.log(`[Embedding] ✓ Got ${embedding.length}-dim embedding for: "${text.substring(0, 30)}..."`);
+    }
       return embedding;
     } catch (error) {
       console.error('[Embedding] Error during embed():', error);
