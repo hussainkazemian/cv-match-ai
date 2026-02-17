@@ -20,23 +20,23 @@ class SectionParser {
     // Job Title/Position
     title: /\b(position|role|title|vacancy|opening|job title|we are looking for|we're hiring|hiring for|etsimme|haluamme|rekrytointi|tjänst|stilling|stelle|poste)\b/gi,
     
-    // Experience
-    experience: /\b(experience|work experience|employment history|professional experience|work history|background|kokemus|työkokemus|työkokemuksesi|erfarenhet|erfaring|erfahrung|expérience)\b/gi,
+    // Experience (English/Finnish)
+    experience: /\b(experience|work experience|employment history|professional experience|work history|background|kokemus|työkokemus|työkokemuksesi)\b/gi,
     
-    // Education
-    education: /\b(education|qualification|degree|academic|studies|training|certification|koulutus|tutkinto|opinnot|utbildning|ausbildung|studium|formation|éducation)\b/gi,
+    // Education (English/Finnish)
+    education: /\b(education|qualification|degree|academic|studies|training|certification|koulutus|tutkinto|opinnot)\b/gi,
     
-    // Skills (Technical + Soft)
-    skills: /\b(skills|competencies|expertise|technical skills|technologies|tech stack|tools|abilities|taidot|osaaminen|kompetenssi|kompetens|färdigheter|fähigkeiten|kompetenzen|compétences)\b/gi,
+    // Skills (Technical + Soft) - English/Finnish
+    skills: /\b(skills|competencies|expertise|technical skills|technologies|tech stack|tools|abilities|taidot|osaaminen|kompetenssi)\b/gi,
     
-    // Requirements (Must-have)
-    requirements: /\b(requirements|required|must have|mandatory|essential|prerequisite|necessary|qualifications needed|vaatimukset|vaatimuksia|vaaditaan|pakollinen|krav|nödvändig|erforderlich|obligatorisch|requis|obligatoire)\b/gi,
+    // Requirements (Must-have) - English/Finnish
+    requirements: /\b(requirements|required|must have|mandatory|essential|prerequisite|necessary|qualifications needed|vaatimukset|vaatimuksia|vaaditaan|pakollinen)\b/gi,
     
-    // Nice-to-have
-    niceToHave: /\b(nice to have|preferred|bonus|plus|advantage|optional|nice if|would be great|desirable|lisäksi|plussaa|eduksi|önskvärt|bonus|vorteilhaft|wünschenswert|souhaitable|un plus)\b/gi,
+    // Nice-to-have - English/Finnish
+    niceToHave: /\b(nice to have|preferred|bonus|plus|advantage|optional|nice if|would be great|desirable|lisäksi|plussaa|eduksi)\b/gi,
     
-    // Responsibilities
-    responsibilities: /\b(responsibilities|duties|tasks|you will|what you'll do|your role|job description|tehtävät|vastuut|työtehtävät|arbetsuppgifter|aufgaben|verantwortlichkeiten|responsabilités|tâches)\b/gi,
+    // Responsibilities - English/Finnish
+    responsibilities: /\b(responsibilities|duties|tasks|you will|what you'll do|your role|job description|tehtävät|vastuut|työtehtävät)\b/gi,
   };
 
   /**
@@ -170,6 +170,7 @@ class SectionParser {
 
   /**
    * Extract individual items from a line (handles bullets, commas, etc.)
+   * STRICT: Only extract skill-like phrases, not sentences/descriptions
    */
   private extractItemsFromLine(line: string): string[] {
     const items: string[] = [];
@@ -180,21 +181,28 @@ class SectionParser {
       .replace(/^[\d]+[\.)]\s*/, '') // Remove numbered lists (1. 2.)
       .trim();
 
-    if (cleaned.length < 3) return items;
+    if (cleaned.length < 2) return items;
+
+    // Skip lines that look like full sentences (contain multiple verbs, long clauses)
+    // These are descriptions/responsibilities, not skills
+    if (this.looksLikeSentence(cleaned)) {
+      return items;
+    }
 
     // Check if line contains comma-separated items
-    if (cleaned.includes(',') && cleaned.length < 200) {
-      // Split by commas
-      const parts = cleaned.split(/,\s*(?:and\s+)?|,\s*(?:ja\s+)?/);
+    if (cleaned.includes(',')) {
+      // Split by commas and "and"/"ja"
+      const parts = cleaned.split(/,\s*(?:and\s+)?|,\s*(?:ja\s+)?|\s+and\s+|\s+ja\s+/i);
       for (const part of parts) {
         const trimmed = part.trim();
-        if (trimmed.length >= 3 && trimmed.length < 100) {
+        // Skills should be short phrases (2-50 chars), not sentences
+        if (trimmed.length >= 2 && trimmed.length <= 50 && !this.looksLikeSentence(trimmed)) {
           items.push(trimmed);
         }
       }
     } else {
-      // Single item
-      if (cleaned.length >= 3 && cleaned.length < 200) {
+      // Single item - must be short (2-50 chars), not a sentence
+      if (cleaned.length >= 2 && cleaned.length <= 50 && !this.looksLikeSentence(cleaned)) {
         items.push(cleaned);
       }
     }
@@ -203,18 +211,51 @@ class SectionParser {
   }
 
   /**
+   * Check if text looks like a sentence (not a skill)
+   */
+  private looksLikeSentence(text: string): boolean {
+    // Too long to be a skill
+    if (text.length > 50) return true;
+    
+    // Contains sentence-ending punctuation
+    if (/[.!?]/.test(text)) return true;
+    
+    // Starts with common action verbs (these are job descriptions)
+    // English and Finnish only
+    if (/^(responsible|worked|developed|designed|managed|led|created|built|implemented|maintained|coordinated|assisted|participated|contributed|collaborated|achieved|established|improved|performed|conducted|organized|supervised|handling|managing|leading|creating|building|working|developing|designing|analyzing|analysing|testing|debugging|deploying|supporting|maintaining|collaborating|facilitating|coordinating|overseeing|directing|executing|delivering|providing|ensuring|establishing|defining|identifying|evaluating|reviewing|monitoring|tracking|reporting|documenting|kehitin|kehittänyt|suunnittelin|rakensin|toteutin|johdin|hallitsin|osallistuin|autoin|testasin|ylläpidin|loin|työskentelin|hoidin|vastuu|kehittäminen|suunnittelu|toteutus|johtaminen)/i.test(text)) {
+      return true;
+    }
+    
+    // Contains too many common words (likely a sentence fragment) - English/Finnish
+    const commonWords = text.toLowerCase().match(/\b(the|and|with|for|from|to|in|on|at|by|of|as|is|was|are|were|be|been|have|has|had|will|would|should|could|can|may|might|must|shall|this|that|these|those|such|which|what|who|where|when|why|how|oli|olen|on|ovat|kanssa|sekä|että|joka)\b/g);
+    if (commonWords && commonWords.length >= 3) return true;
+    
+    // Contains multiple spaces suggesting multi-word sentence structure
+    const wordCount = text.split(/\s+/).length;
+    if (wordCount > 8) return true; // Skills rarely exceed 8 words
+    
+    return false;
+  }
+
+  /**
    * Check if a line looks like a job title (used for first few lines)
    */
   private looksLikeJobTitle(line: string): boolean {
     // Job titles are usually:
-    // - Short (10-80 chars)
+    // - Short to medium (5-100 chars) - expanded range
     // - Contain job-related words
     // - Not bullet points
+    // - Not generic headers
     
-    if (line.length < 10 || line.length > 80) return false;
-    if (line.startsWith('-') || line.startsWith('•')) return false;
+    if (line.length < 5 || line.length > 100) return false;
+    if (/^[\s\-•●○◦▪▫★✓✔→➤➢⋅⁃]/.test(line)) return false;
     
-    const jobTitleWords = /\b(developer|engineer|architect|designer|manager|analyst|specialist|consultant|coordinator|administrator|director|lead|senior|junior|full[\s\-]?stack|front[\s\-]?end|back[\s\-]?end|data|software|web|mobile|cloud|devops|kehittäjä|insinööri|arkkitehti|päällikkö|asiantuntija)\b/gi;
+    // Exclude generic headers that are not job titles
+    if (/^(about|overview|description|summary|responsibilities|requirements|qualifications|benefits|company|location|type|posted|deadline|application|apply|contact|salary|compensation|perks|our company|about us|job description|job summary)/i.test(line)) {
+      return false;
+    }
+    
+    const jobTitleWords = /\b(developer|engineer|architect|designer|manager|analyst|specialist|consultant|coordinator|administrator|director|officer|lead|head|chief|senior|junior|intern|trainee|assistant|associate|principal|staff|full[\s\-]?stack|front[\s\-]?end|back[\s\-]?end|data|software|web|mobile|cloud|devops|devsecops|sre|product|project|program|scrum|agile|qa|quality|test|security|network|system|database|ml|ai|machine[\s\-]?learning|data[\s\-]?scientist|kehittäjä|insinööri|arkkitehti|suunnittelija|päällikkö|johtaja|analyytikko|asiantuntija|konsultti|koordinaattori)\b/gi;
     
     return jobTitleWords.test(line);
   }
@@ -248,37 +289,37 @@ class SectionParser {
       const items = this.extractItemsFromLine(line);
       
       for (const item of items) {
-        if (item.length < 5) continue; // Skip very short items
+        if (item.length < 2) continue; // Skip very short items
         
-        // Check inline keywords (experience indicators)
-        if (/\b(\d+[\+]?\s*(year|vuotta|år)|years of|kokemus|experience|erfahrung)\b/i.test(item)) {
+        // Check inline keywords (experience indicators) - English/Finnish
+        if (/(\d+[\+]?\s*(year|vuotta)|years of|kokemus|experience)\b/i.test(item)) {
           sections.experience.push(item);
-          console.log(`  [Fallback] Experience: "${item.substring(0, 60)}..."`);
+          console.log(`  [Fallback] Experience: "${item.substring(0, 50)}"`);
         }
         // Education indicators
         else if (/\b(bachelor|master|degree|university|college|bsc|msc|phd|tutkinto|yliopisto|diploma)\b/i.test(item)) {
           sections.education.push(item);
-          console.log(`  [Fallback] Education: "${item.substring(0, 60)}..."`);
+          console.log(`  [Fallback] Education: "${item.substring(0, 50)}"`);
         }
         // Nice-to-have indicators
         else if (/\b(nice.to.have|preferred|bonus|optional|plus|advantage|plussaa|eduksi)\b/i.test(item)) {
           sections.niceToHave.push(item);
-          console.log(`  [Fallback] Nice-to-have: "${item.substring(0, 60)}..."`);
+          console.log(`  [Fallback] Nice-to-have: "${item.substring(0, 50)}"`);
         }
         // Required/Must-have indicators
         else if (/\b(required|must.have|mandatory|essential|necessary|vaaditaan|pakollinen)\b/i.test(item)) {
           sections.requirements.push(item);
-          console.log(`  [Fallback] Required: "${item.substring(0, 60)}..."`);
+          console.log(`  [Fallback] Required: "${item.substring(0, 50)}"`);
         }
-        // Responsibilities (action verbs)
-        else if (/\b(develop|design|implement|maintain|manage|lead|build|create|work with|collaborate|testaa|kehittää)\b/i.test(item)) {
+        // Responsibilities (action verbs) - skip these for skills
+        else if (/^(develop|design|implement|maintain|manage|lead|build|create|work|collaborate|test|kehittää|responsible|worked|developed)\b/i.test(item)) {
           sections.responsibilities.push(item);
-          console.log(`  [Fallback] Responsibility: "${item.substring(0, 60)}..."`);
+          console.log(`  [Fallback] Responsibility: "${item.substring(0, 50)}"`);
         }
-        // Default to skills if it looks skill-like (tech terms, not sentences)
-        else if (item.length >= 5 && item.length < 100) {
+        // Default to skills if it looks skill-like (short, tech terms, not sentences)
+        else if (item.length >= 2 && item.length <= 50 && !this.looksLikeSentence(item)) {
           sections.skills.push(item);
-          console.log(`  [Fallback] Skill: "${item.substring(0, 60)}..."`);
+          console.log(`  [Fallback] Skill: "${item.substring(0, 50)}"`);
         }
       }
     }
